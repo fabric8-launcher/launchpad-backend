@@ -22,6 +22,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.wildfly.swarm.Swarm;
+import org.wildfly.swarm.config.infinispan.CacheContainer;
+import org.wildfly.swarm.config.infinispan.Mode;
+import org.wildfly.swarm.config.infinispan.cache_container.FileStore;
+import org.wildfly.swarm.config.infinispan.cache_container.JGroupsTransport;
+import org.wildfly.swarm.config.infinispan.cache_container.LockingComponent;
+import org.wildfly.swarm.config.infinispan.cache_container.LockingComponent.Isolation;
+import org.wildfly.swarm.config.infinispan.cache_container.TransactionComponent;
+import org.wildfly.swarm.infinispan.InfinispanFraction;
 import org.wildfly.swarm.management.ManagementFraction;
 import org.wildfly.swarm.undertow.UndertowFraction;
 
@@ -41,6 +49,22 @@ public class Main
       // Avoid enabling management port
       swarm.fraction(new ManagementFraction());
       swarm.fraction(UndertowFraction.createDefaultFraction(keyStorePath.toString(), "password", "appserver"));
+
+      //TODO Default caching needs tweaking
+      CacheContainer webCache = new CacheContainer("web")
+              .defaultCache("dist")
+              .jgroupsTransport(new JGroupsTransport().lockTimeout(60000L))
+              .distributedCache("dist", distCache -> distCache
+                      .mode(Mode.ASYNC)
+                      .l1Lifespan(0L)
+                      .owners(2)
+                      .lockingComponent(new LockingComponent().isolation(Isolation.REPEATABLE_READ))
+                      .transactionComponent(new TransactionComponent().mode(TransactionComponent.Mode.BATCH))
+                      .fileStore(new FileStore()));
+
+      InfinispanFraction infinispanFraction = new InfinispanFraction();
+      infinispanFraction.cacheContainer(webCache);
+      swarm.fraction(infinispanFraction);
       swarm.start().deploy();
    }
 

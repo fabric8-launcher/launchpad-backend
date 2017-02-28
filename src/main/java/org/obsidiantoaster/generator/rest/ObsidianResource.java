@@ -74,20 +74,6 @@ public class ObsidianResource {
 
    private static final Logger log = Logger.getLogger(ObsidianResource.class.getName());
 
-   private static String join(Iterable<String> strings, String separator) {
-      StringBuilder buffer = new StringBuilder();
-      boolean first = true;
-      for (String string : strings) {
-         if (first) {
-            first = false;
-         } else {
-            buffer.append(separator);
-         }
-         buffer.append(string);
-      }
-      return buffer.toString();
-   }
-
    private final Map<String, String> commandMap = new TreeMap<>();
 
    private final BlockingQueue<Path> directoriesToDelete = new LinkedBlockingQueue<>();
@@ -308,7 +294,7 @@ public class ObsidianResource {
 
    protected void validateCommand(String commandName) {
       if (commandMap.get(commandName) == null) {
-         String message = "No such command `" + commandName + "`. Supported commmands are '" + join(commandMap.keySet(), "', '") + "'";
+         String message = "No such command `" + commandName + "`. Supported commmands are '" + String.join("', '", commandMap.keySet()) + "'";
          throw new WebApplicationException(message, Status.NOT_FOUND);
       }
    }

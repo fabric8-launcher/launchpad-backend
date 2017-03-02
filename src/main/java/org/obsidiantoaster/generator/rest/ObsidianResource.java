@@ -24,6 +24,7 @@ import org.jboss.forge.addon.ui.context.UISelection;
 import org.jboss.forge.addon.ui.controller.CommandController;
 import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
 import org.jboss.forge.addon.ui.controller.WizardCommandController;
+import org.jboss.forge.addon.ui.result.CompositeResult;
 import org.jboss.forge.addon.ui.result.Failed;
 import org.jboss.forge.addon.ui.result.Result;
 import org.jboss.forge.furnace.versions.Versions;
@@ -310,7 +311,7 @@ public class ObsidianResource
             Result result = controller.execute();
             if (result instanceof Failed)
             {
-               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(result.getMessage()).build();
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(getMessage(result)).build();
             }
             else
             {
@@ -332,7 +333,7 @@ public class ObsidianResource
                         .build();
                }
                else {
-                  String entity = result.getMessage();
+                  String entity = getMessage(result);
                   String contentType = "plain/text";
                   if (isJsonString(entity)) {
                      contentType = "application/json";
@@ -351,6 +352,33 @@ public class ObsidianResource
             return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
          }
       }
+   }
+
+   /**
+    * Returns the result message handling composite results
+    */
+   protected static String getMessage(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         StringBuilder builder = new StringBuilder();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            String message = getMessage(child);
+            if (message != null && message.trim().length() > 0)
+            {
+               if (builder.length() > 0)
+               {
+                  builder.append("\n");
+               }
+               builder.append(message);
+            }
+         }
+         return builder.toString();
+
+      }
+      return result.getMessage();
    }
 
    private boolean isJsonString(String text)

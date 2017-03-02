@@ -334,9 +334,9 @@ public class ObsidianResource
                }
                else {
                   String entity = getMessage(result);
-                  String contentType = "plain/text";
+                  String contentType = MediaType.TEXT_PLAIN;
                   if (isJsonString(entity)) {
-                     contentType = "application/json";
+                     contentType = MediaType.APPLICATION_JSON;
                   }
                   return Response
                            .ok(entity)

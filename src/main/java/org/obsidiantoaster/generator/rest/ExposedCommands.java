@@ -17,10 +17,10 @@ package org.obsidiantoaster.generator.rest;
 
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  */
@@ -28,7 +28,7 @@ public class ExposedCommands
 {
    private final Map<String, String> commandMap = new TreeMap<>();
    private final Map<String, String> queryMap = new TreeMap<>();
-   private final Set<String> zipCommands = new HashSet<>();
+   private final Set<String> zipCommands = new TreeSet<>();
 
    public ExposedCommands()
    {
@@ -78,11 +78,30 @@ public class ExposedCommands
             message = "No commands are supported by this service";
          } else
          {
-            message = "No such command `" + name + "`. Supported commmands are '" + String
+            message = "No such command `" + name + "`. Supported commands are '" + String
                      .join("', '", commandMap.keySet()) + "'";
          }
          throw new WebApplicationException(message, Response.Status.NOT_FOUND);
       }
+   }
+
+   /**
+    * Validates the command name can generate a zip
+    */
+   public void validateZipCommand(String name)
+   {
+      if (!zipCommands.contains(name)) {
+         String message;
+         if (zipCommands.isEmpty()) {
+            message = "No commands can generate zips in this service";
+         } else
+         {
+            message = "No such zip command `" + name + "`. Supported zip commands are '" + String
+                     .join("', '", zipCommands) + "'";
+         }
+         throw new WebApplicationException(message, Response.Status.NOT_FOUND);
+      }
+
    }
 
 
@@ -120,4 +139,5 @@ public class ExposedCommands
       addCommand(name, label);
       zipCommands.add(name);
    }
+
 }

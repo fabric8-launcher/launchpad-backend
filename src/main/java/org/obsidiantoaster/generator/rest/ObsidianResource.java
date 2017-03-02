@@ -296,9 +296,57 @@ public class ObsidianResource
    }
 
    @POST
-   @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @javax.ws.rs.Path("/commands/{commandName}/zip")
    @Consumes(MediaType.APPLICATION_JSON)
    public Response downloadZip(JsonObject content,
+            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      exposedCommands.validateZipCommand(commandName);
+      try (CommandController controller = getCommand(commandName, headers))
+      {
+         helper.populateControllerAllInputs(content, controller);
+         if (controller.isValid())
+         {
+            Result result = controller.execute();
+            if (result instanceof Failed)
+            {
+               JsonObjectBuilder builder = Json.createObjectBuilder();
+               helper.describeResult(builder,result);
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(builder).build();
+            }
+            else
+            {
+               UISelection<?> selection = controller.getContext().getSelection();
+               java.nio.file.Path path = Paths.get(selection.get().toString());
+               // Find artifactId
+               String artifactId = content.getJsonArray("inputs").stream()
+                        .filter(input -> "named".equals(((JsonObject) input).getString("name")))
+                        .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
+                        .findFirst().orElse("demo");
+               byte[] zipContents = org.obsidiantoaster.generator.util.Paths.zip(artifactId, path);
+               directoriesToDelete.offer(path);
+               return Response
+                        .ok(zipContents)
+                        .type("application/zip")
+                        .header("Content-Disposition", "attachment; filename=\"" + artifactId + ".zip\"")
+                        .build();
+            }
+         }
+         else
+         {
+            JsonObjectBuilder builder = createObjectBuilder();
+            helper.describeValidation(builder, controller);
+            return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
+         }
+      }
+   }
+
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @Consumes(MediaType.APPLICATION_JSON)
+   public Response executeCommandJson(JsonObject content,
             @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
             @Context HttpHeaders headers)
             throws Exception
@@ -318,34 +366,15 @@ public class ObsidianResource
             }
             else
             {
-               if (exposedCommands.generateZipCommand(commandName))
-               {
-               UISelection<?> selection = controller.getContext().getSelection();
-               java.nio.file.Path path = Paths.get(selection.get().toString());
-               // Find artifactId
-               String artifactId = content.getJsonArray("inputs").stream()
-                        .filter(input -> "named".equals(((JsonObject) input).getString("name")))
-                        .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
-                        .findFirst().orElse("demo");
-               byte[] zipContents = org.obsidiantoaster.generator.util.Paths.zip(artifactId, path);
-               directoriesToDelete.offer(path);
+               String entity = getMessage(result);
+               String contentType = MediaType.TEXT_PLAIN;
+               if (isJsonString(entity)) {
+                  contentType = MediaType.APPLICATION_JSON;
+               }
                return Response
-                        .ok(zipContents)
-                        .type("application/zip")
-                        .header("Content-Disposition", "attachment; filename=\"" + artifactId + ".zip\"")
+                        .ok(entity)
+                        .type(contentType)
                         .build();
-               }
-               else {
-                  String entity = getMessage(result);
-                  String contentType = MediaType.TEXT_PLAIN;
-                  if (isJsonString(entity)) {
-                     contentType = MediaType.APPLICATION_JSON;
-                  }
-                  return Response
-                           .ok(entity)
-                           .type(contentType)
-                           .build();
-               }
             }
          }
          else

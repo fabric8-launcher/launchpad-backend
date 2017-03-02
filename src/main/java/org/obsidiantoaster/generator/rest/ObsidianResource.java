@@ -39,6 +39,7 @@ import javax.enterprise.concurrent.ManagedExecutorService;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
+import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
 import javax.json.JsonString;
@@ -311,7 +312,9 @@ public class ObsidianResource
             Result result = controller.execute();
             if (result instanceof Failed)
             {
-               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(getMessage(result)).build();
+               JsonObjectBuilder builder = Json.createObjectBuilder();
+               helper.describeResult(builder,result);
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(builder).build();
             }
             else
             {

@@ -15,19 +15,24 @@
  */
 package org.obsidiantoaster.generator.rest;
 
-import static javax.json.Json.createObjectBuilder;
-
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.jboss.forge.addon.resource.Resource;
+import org.jboss.forge.addon.resource.ResourceFactory;
+import org.jboss.forge.addon.ui.command.CommandFactory;
+import org.jboss.forge.addon.ui.command.UICommand;
+import org.jboss.forge.addon.ui.context.UIContext;
+import org.jboss.forge.addon.ui.context.UISelection;
+import org.jboss.forge.addon.ui.controller.CommandController;
+import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
+import org.jboss.forge.addon.ui.controller.WizardCommandController;
+import org.jboss.forge.addon.ui.result.Failed;
+import org.jboss.forge.addon.ui.result.Result;
+import org.jboss.forge.furnace.versions.Versions;
+import org.jboss.forge.service.ui.RestUIContext;
+import org.jboss.forge.service.ui.RestUIRuntime;
+import org.jboss.forge.service.util.UICommandHelper;
+import org.obsidiantoaster.generator.ForgeInitializer;
+import org.obsidiantoaster.generator.event.FurnaceStartup;
+import org.obsidiantoaster.generator.util.JsonBuilder;
 
 import javax.enterprise.concurrent.ManagedExecutorService;
 import javax.enterprise.context.ApplicationScoped;
@@ -50,25 +55,19 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
+import javax.ws.rs.core.UriInfo;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.jboss.forge.addon.resource.Resource;
-import org.jboss.forge.addon.resource.ResourceFactory;
-import org.jboss.forge.addon.ui.command.CommandFactory;
-import org.jboss.forge.addon.ui.command.UICommand;
-import org.jboss.forge.addon.ui.context.UIContext;
-import org.jboss.forge.addon.ui.context.UISelection;
-import org.jboss.forge.addon.ui.controller.CommandController;
-import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
-import org.jboss.forge.addon.ui.controller.WizardCommandController;
-import org.jboss.forge.addon.ui.result.Failed;
-import org.jboss.forge.addon.ui.result.Result;
-import org.jboss.forge.furnace.versions.Versions;
-import org.jboss.forge.service.ui.RestUIContext;
-import org.jboss.forge.service.ui.RestUIRuntime;
-import org.jboss.forge.service.util.UICommandHelper;
-import org.obsidiantoaster.generator.ForgeInitializer;
-import org.obsidiantoaster.generator.event.FurnaceStartup;
-import org.obsidiantoaster.generator.util.JsonBuilder;
+import static javax.json.Json.createObjectBuilder;
 
 @javax.ws.rs.Path("/forge")
 @ApplicationScoped
@@ -78,7 +77,7 @@ public class ObsidianResource
 
    private static final Logger log = Logger.getLogger(ObsidianResource.class.getName());
 
-   private final Map<String, String> commandMap = new TreeMap<>();
+   private final ExposedCommands exposedCommands;
 
    private final BlockingQueue<Path> directoriesToDelete = new LinkedBlockingQueue<>();
 
@@ -87,8 +86,7 @@ public class ObsidianResource
 
    public ObsidianResource()
    {
-      commandMap.put("obsidian-new-quickstart", "Obsidian: New Quickstart");
-      commandMap.put("obsidian-new-project", "Obsidian: New Project");
+      exposedCommands = new ExposedCommands();
    }
 
    @Inject
@@ -156,7 +154,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
       {
@@ -174,7 +172,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
       {
@@ -195,7 +193,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       int stepIndex = content.getInt("stepIndex", 1);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
@@ -221,6 +219,46 @@ public class ObsidianResource
       return builder.build();
    }
 
+   @GET
+   @javax.ws.rs.Path("/commands/{commandName}/query")
+   @Consumes(MediaType.MEDIA_TYPE_WILDCARD)
+   @Produces({MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN})
+   public Response executeQuery(@Context UriInfo uriInfo,
+            @PathParam("commandName") String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      exposedCommands.validateCommand(commandName);
+      String stepIndex = null;
+      MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
+      List<String> stepValues = parameters.get("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
+      {
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null) {
+         stepIndex = "0";
+      }
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      for (Map.Entry<String, List<String>> entry : parameters.entrySet())
+      {
+         String key = entry.getKey();
+         if (!"stepIndex".equals(key))
+         {
+            jsonBuilder.addInput(key, entry.getValue());
+         }
+      }
+
+      final Response response = downloadZip(jsonBuilder.build(), commandName, headers);
+      if (response.getEntity() instanceof JsonObject)
+      {
+         JsonObject responseEntity = (JsonObject) response.getEntity();
+         String error = ((JsonObject) responseEntity.getJsonArray("messages").get(0)).getString("description");
+         return Response.status(Status.PRECONDITION_FAILED).entity(error).build();
+      }
+      return response;
+   }
+
    @POST
    @javax.ws.rs.Path("/commands/{commandName}/execute")
    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -229,8 +267,16 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
-      String stepIndex = form.asMap().remove("stepIndex").get(0);
+      exposedCommands.validateCommand(commandName);
+      String stepIndex = null;
+      List<String> stepValues = form.asMap().remove("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
+      {
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null) {
+         stepIndex = "0";
+      }
       final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
       for (Map.Entry<String, List<String>> entry : form.asMap().entrySet())
       {
@@ -255,7 +301,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       try (CommandController controller = getCommand(commandName, headers))
       {
          helper.populateControllerAllInputs(content, controller);
@@ -268,6 +314,8 @@ public class ObsidianResource
             }
             else
             {
+               if (exposedCommands.generateZipCommand(commandName))
+               {
                UISelection<?> selection = controller.getContext().getSelection();
                java.nio.file.Path path = Paths.get(selection.get().toString());
                // Find artifactId
@@ -282,6 +330,18 @@ public class ObsidianResource
                         .type("application/zip")
                         .header("Content-Disposition", "attachment; filename=\"" + artifactId + ".zip\"")
                         .build();
+               }
+               else {
+                  String entity = result.getMessage();
+                  String contentType = "plain/text";
+                  if (isJsonString(entity)) {
+                     contentType = "application/json";
+                  }
+                  return Response
+                           .ok(entity)
+                           .type(contentType)
+                           .build();
+               }
             }
          }
          else
@@ -293,20 +353,22 @@ public class ObsidianResource
       }
    }
 
-   protected void validateCommand(String commandName)
+   private boolean isJsonString(String text)
    {
-      if (commandMap.get(commandName) == null)
+      if (text != null)
       {
-         String message = "No such command `" + commandName + "`. Supported commmands are '"
-                  + String.join("', '", commandMap.keySet()) + "'";
-         throw new WebApplicationException(message, Status.NOT_FOUND);
+         String trimmed = text.trim();
+         return (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+                  (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                  (trimmed.startsWith("[") && trimmed.endsWith("]"));
       }
+      return false;
    }
 
    private CommandController getCommand(String name, HttpHeaders headers) throws Exception
    {
       RestUIContext context = createUIContext(headers);
-      UICommand command = commandFactory.getNewCommandByName(context, commandMap.get(name));
+      UICommand command = commandFactory.getNewCommandByName(context, exposedCommands.getCommandLabel(name));
       CommandController controller = controllerFactory.createController(context,
                new RestUIRuntime(Collections.emptyList()), command);
       controller.initialize();

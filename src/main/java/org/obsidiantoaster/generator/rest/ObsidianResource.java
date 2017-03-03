@@ -231,7 +231,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      exposedCommands.validateCommand(commandName);
+      exposedCommands.validateQuery(commandName);
       String stepIndex = null;
       MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
       List<String> stepValues = parameters.get("stepIndex");
@@ -252,7 +252,7 @@ public class ObsidianResource
          }
       }
 
-      final Response response = downloadZip(jsonBuilder.build(), commandName, headers);
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
       if (response.getEntity() instanceof JsonObject)
       {
          JsonObject responseEntity = (JsonObject) response.getEntity();
@@ -286,7 +286,7 @@ public class ObsidianResource
          jsonBuilder.addInput(entry.getKey(), entry.getValue());
       }
 
-      final Response response = downloadZip(jsonBuilder.build(), commandName, headers);
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
       if (response.getEntity() instanceof JsonObject)
       {
          JsonObject responseEntity = (JsonObject) response.getEntity();

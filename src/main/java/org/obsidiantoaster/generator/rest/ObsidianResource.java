@@ -409,7 +409,7 @@ public class ObsidianResource
          }
          return answer;
       }
-      return result.getEntity().get();
+      return result.getEntity().orElse(null);
    }
 
    /**

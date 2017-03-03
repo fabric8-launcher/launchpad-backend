@@ -17,6 +17,7 @@ package org.obsidiantoaster.generator.rest;
 
 import static javax.json.Json.createObjectBuilder;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -43,14 +44,22 @@ import javax.ws.rs.POST;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.Invocation;
+import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Form;
+import javax.ws.rs.core.GenericEntity;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
 import org.jboss.forge.addon.resource.Resource;
 import org.jboss.forge.addon.resource.ResourceFactory;
 import org.jboss.forge.addon.ui.command.CommandFactory;
@@ -66,6 +75,7 @@ import org.jboss.forge.furnace.versions.Versions;
 import org.jboss.forge.service.ui.RestUIContext;
 import org.jboss.forge.service.ui.RestUIRuntime;
 import org.jboss.forge.service.util.UICommandHelper;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
 import org.obsidiantoaster.generator.ForgeInitializer;
 import org.obsidiantoaster.generator.event.FurnaceStartup;
 import org.obsidiantoaster.generator.util.JsonBuilder;
@@ -270,11 +280,7 @@ public class ObsidianResource
             {
                UISelection<?> selection = controller.getContext().getSelection();
                java.nio.file.Path path = Paths.get(selection.get().toString());
-               // Find artifactId
-               String artifactId = content.getJsonArray("inputs").stream()
-                        .filter(input -> "named".equals(((JsonObject) input).getString("name")))
-                        .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
-                        .findFirst().orElse("demo");
+               String artifactId = findArtifactId(content);
                byte[] zipContents = org.obsidiantoaster.generator.util.Paths.zip(artifactId, path);
                directoriesToDelete.offer(path);
                return Response
@@ -291,6 +297,42 @@ public class ObsidianResource
             return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
          }
       }
+   }
+
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/catapult")
+   @Consumes(MediaType.APPLICATION_JSON)
+   public Response uploadZip(JsonObject content,
+                               @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+                               @Context HttpHeaders headers)
+         throws Exception
+   {
+      Response response = downloadZip(content, commandName, headers);
+      if (response.getStatus() != 200) {
+         return response;
+      }
+
+      String fileName = findArtifactId(content);
+      byte[] zipContents = (byte[]) response.getEntity();
+      Client client = ClientBuilder.newBuilder().build();
+      WebTarget target = client.target("http://catapult.local/api/catapult/upload");
+      client.property("Content-Type", MediaType.MULTIPART_FORM_DATA);
+      Invocation.Builder builder = target.request();
+
+      MultipartFormDataOutput multipartFormDataOutput = new MultipartFormDataOutput();
+      multipartFormDataOutput.addFormData("file", new ByteArrayInputStream(zipContents),
+            MediaType.MULTIPART_FORM_DATA_TYPE, fileName + ".zip");
+      GenericEntity genericEntity = new GenericEntity<MultipartFormDataOutput>(multipartFormDataOutput) { };
+
+      Response postResponse = builder.post(Entity.entity(genericEntity, MediaType.MULTIPART_FORM_DATA_TYPE));
+      return Response.temporaryRedirect(postResponse.getLocation()).build();
+   }
+
+   private String findArtifactId(JsonObject content) {
+      return content.getJsonArray("inputs").stream()
+            .filter(input -> "named".equals(((JsonObject) input).getString("name")))
+            .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
+            .findFirst().orElse("demo");
    }
 
    protected void validateCommand(String commandName)

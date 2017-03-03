@@ -195,15 +195,8 @@
          <artifactId>jaxrs-jsonp</artifactId>
       </dependency>
       <dependency>
-         <groupId>org.jboss.resteasy</groupId>
-         <artifactId>resteasy-multipart-provider</artifactId>
-         <version>3.1.1.Final</version>
-         <exclusions>
-            <exclusion>
-               <groupId>org.jboss.resteasy</groupId>
-               <artifactId>resteasy-jaxrs</artifactId>
-            </exclusion>
-         </exclusions>
+         <groupId>org.wildfly.swarm</groupId>
+         <artifactId>jaxrs-multipart</artifactId>
       </dependency>
 
       <!-- Forge APIs -->

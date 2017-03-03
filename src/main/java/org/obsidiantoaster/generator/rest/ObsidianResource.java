@@ -61,6 +61,7 @@ import javax.ws.rs.core.UriInfo;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -366,15 +367,21 @@ public class ObsidianResource
             }
             else
             {
-               String entity = getMessage(result);
-               String contentType = MediaType.TEXT_PLAIN;
-               if (isJsonString(entity)) {
-                  contentType = MediaType.APPLICATION_JSON;
+               Object entity = getEntity(result);
+               if (entity != null)
+               {
+                  return Response
+                           .ok(entity)
+                           .type(MediaType.APPLICATION_JSON)
+                           .build();
                }
-               return Response
-                        .ok(entity)
-                        .type(contentType)
-                        .build();
+               else
+               {
+                  return Response
+                           .ok(getMessage(result))
+                           .type(MediaType.TEXT_PLAIN)
+                           .build();
+               }
             }
          }
          else
@@ -384,6 +391,25 @@ public class ObsidianResource
             return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
          }
       }
+   }
+
+   /**
+    * Returns the entity from the result handling {@link CompositeResult} values as a List of entities
+    */
+   protected static Object getEntity(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         List<Object> answer = new ArrayList<>();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            Object entity = getEntity(child);
+            answer.add(entity);
+         }
+         return answer;
+      }
+      return result.getEntity().get();
    }
 
    /**
@@ -411,18 +437,6 @@ public class ObsidianResource
 
       }
       return result.getMessage();
-   }
-
-   private boolean isJsonString(String text)
-   {
-      if (text != null)
-      {
-         String trimmed = text.trim();
-         return (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-                  (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-                  (trimmed.startsWith("[") && trimmed.endsWith("]"));
-      }
-      return false;
    }
 
    private CommandController getCommand(String name, HttpHeaders headers) throws Exception

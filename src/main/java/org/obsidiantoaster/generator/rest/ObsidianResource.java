@@ -49,15 +49,10 @@ import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.Form;
-import javax.ws.rs.core.GenericEntity;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
+import javax.ws.rs.core.*;
 import javax.ws.rs.core.Response.Status;
 
+import com.sun.jndi.toolkit.url.Uri;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.jboss.forge.addon.resource.Resource;
@@ -314,8 +309,14 @@ public class ObsidianResource
 
       String fileName = findArtifactId(content);
       byte[] zipContents = (byte[]) response.getEntity();
+
+      UriBuilder uri = UriBuilder.fromPath("/api/catapult/upload");
+      uri.host(System.getenv("CATAPULT_SERVICE_HOST"));
+      String port = System.getenv("CATAPULT_SERVICE_PORT");
+      uri.port(port != null ? Integer.parseInt(port) : 80);
+
       Client client = ClientBuilder.newBuilder().build();
-      WebTarget target = client.target("http://catapult.local/api/catapult/upload");
+      WebTarget target = client.target(uri.build());
       client.property("Content-Type", MediaType.MULTIPART_FORM_DATA);
       Invocation.Builder builder = target.request();
 

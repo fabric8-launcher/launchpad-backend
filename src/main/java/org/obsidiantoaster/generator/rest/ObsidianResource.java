@@ -314,6 +314,7 @@ public class ObsidianResource
       uri.host(System.getenv("CATAPULT_SERVICE_HOST"));
       String port = System.getenv("CATAPULT_SERVICE_PORT");
       uri.port(port != null ? Integer.parseInt(port) : 80);
+      uri.scheme("http");
 
       Client client = ClientBuilder.newBuilder().build();
       WebTarget target = client.target(uri.build());
@@ -326,7 +327,7 @@ public class ObsidianResource
       GenericEntity genericEntity = new GenericEntity<MultipartFormDataOutput>(multipartFormDataOutput) { };
 
       Response postResponse = builder.post(Entity.entity(genericEntity, MediaType.MULTIPART_FORM_DATA_TYPE));
-      return Response.temporaryRedirect(postResponse.getLocation()).build();
+      return Response.ok(postResponse.getLocation().toString()).build();
    }
 
    private String findArtifactId(JsonObject content) {

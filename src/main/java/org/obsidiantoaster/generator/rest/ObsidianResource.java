@@ -15,24 +15,31 @@
  */
 package org.obsidiantoaster.generator.rest;
 
-import static javax.json.Json.createObjectBuilder;
-
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.jboss.forge.addon.resource.Resource;
+import org.jboss.forge.addon.resource.ResourceFactory;
+import org.jboss.forge.addon.ui.command.CommandFactory;
+import org.jboss.forge.addon.ui.command.UICommand;
+import org.jboss.forge.addon.ui.context.UIContext;
+import org.jboss.forge.addon.ui.context.UISelection;
+import org.jboss.forge.addon.ui.controller.CommandController;
+import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
+import org.jboss.forge.addon.ui.controller.WizardCommandController;
+import org.jboss.forge.addon.ui.result.CompositeResult;
+import org.jboss.forge.addon.ui.result.Failed;
+import org.jboss.forge.addon.ui.result.Result;
+import org.jboss.forge.furnace.versions.Versions;
+import org.jboss.forge.service.ui.RestUIContext;
+import org.jboss.forge.service.ui.RestUIRuntime;
+import org.jboss.forge.service.util.UICommandHelper;
+import org.obsidiantoaster.generator.ForgeInitializer;
+import org.obsidiantoaster.generator.event.FurnaceStartup;
+import org.obsidiantoaster.generator.util.JsonBuilder;
 
 import javax.enterprise.concurrent.ManagedExecutorService;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
+import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
 import javax.json.JsonString;
@@ -50,25 +57,20 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
+import javax.ws.rs.core.UriInfo;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.jboss.forge.addon.resource.Resource;
-import org.jboss.forge.addon.resource.ResourceFactory;
-import org.jboss.forge.addon.ui.command.CommandFactory;
-import org.jboss.forge.addon.ui.command.UICommand;
-import org.jboss.forge.addon.ui.context.UIContext;
-import org.jboss.forge.addon.ui.context.UISelection;
-import org.jboss.forge.addon.ui.controller.CommandController;
-import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
-import org.jboss.forge.addon.ui.controller.WizardCommandController;
-import org.jboss.forge.addon.ui.result.Failed;
-import org.jboss.forge.addon.ui.result.Result;
-import org.jboss.forge.furnace.versions.Versions;
-import org.jboss.forge.service.ui.RestUIContext;
-import org.jboss.forge.service.ui.RestUIRuntime;
-import org.jboss.forge.service.util.UICommandHelper;
-import org.obsidiantoaster.generator.ForgeInitializer;
-import org.obsidiantoaster.generator.event.FurnaceStartup;
-import org.obsidiantoaster.generator.util.JsonBuilder;
+import static javax.json.Json.createObjectBuilder;
 
 @javax.ws.rs.Path("/forge")
 @ApplicationScoped
@@ -78,7 +80,7 @@ public class ObsidianResource
 
    private static final Logger log = Logger.getLogger(ObsidianResource.class.getName());
 
-   private final Map<String, String> commandMap = new TreeMap<>();
+   private final ExposedCommands exposedCommands;
 
    private final BlockingQueue<Path> directoriesToDelete = new LinkedBlockingQueue<>();
 
@@ -87,8 +89,7 @@ public class ObsidianResource
 
    public ObsidianResource()
    {
-      commandMap.put("obsidian-new-quickstart", "Obsidian: New Quickstart");
-      commandMap.put("obsidian-new-project", "Obsidian: New Project");
+      exposedCommands = new ExposedCommands();
    }
 
    @Inject
@@ -156,7 +157,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
       {
@@ -174,7 +175,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
       {
@@ -195,7 +196,7 @@ public class ObsidianResource
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateCommand(commandName);
       int stepIndex = content.getInt("stepIndex", 1);
       JsonObjectBuilder builder = createObjectBuilder();
       try (CommandController controller = getCommand(commandName, headers))
@@ -221,23 +222,37 @@ public class ObsidianResource
       return builder.build();
    }
 
-   @POST
-   @javax.ws.rs.Path("/commands/{commandName}/execute")
-   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
-   public Response executeCommand(Form form,
-            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+   @GET
+   @javax.ws.rs.Path("/commands/{commandName}/query")
+   @Consumes(MediaType.MEDIA_TYPE_WILDCARD)
+   @Produces({MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN})
+   public Response executeQuery(@Context UriInfo uriInfo,
+            @PathParam("commandName") String commandName,
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
-      String stepIndex = form.asMap().remove("stepIndex").get(0);
-      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
-      for (Map.Entry<String, List<String>> entry : form.asMap().entrySet())
+      exposedCommands.validateQuery(commandName);
+      String stepIndex = null;
+      MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
+      List<String> stepValues = parameters.get("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
       {
-         jsonBuilder.addInput(entry.getKey(), entry.getValue());
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null) {
+         stepIndex = "0";
+      }
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      for (Map.Entry<String, List<String>> entry : parameters.entrySet())
+      {
+         String key = entry.getKey();
+         if (!"stepIndex".equals(key))
+         {
+            jsonBuilder.addInput(key, entry.getValue());
+         }
       }
 
-      final Response response = downloadZip(jsonBuilder.build(), commandName, headers);
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
       if (response.getEntity() instanceof JsonObject)
       {
          JsonObject responseEntity = (JsonObject) response.getEntity();
@@ -249,13 +264,47 @@ public class ObsidianResource
 
    @POST
    @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+   public Response executeCommand(Form form,
+            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      exposedCommands.validateCommand(commandName);
+      String stepIndex = null;
+      List<String> stepValues = form.asMap().remove("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
+      {
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null) {
+         stepIndex = "0";
+      }
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      for (Map.Entry<String, List<String>> entry : form.asMap().entrySet())
+      {
+         jsonBuilder.addInput(entry.getKey(), entry.getValue());
+      }
+
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
+      if (response.getEntity() instanceof JsonObject)
+      {
+         JsonObject responseEntity = (JsonObject) response.getEntity();
+         String error = ((JsonObject) responseEntity.getJsonArray("messages").get(0)).getString("description");
+         return Response.status(Status.PRECONDITION_FAILED).entity(error).build();
+      }
+      return response;
+   }
+
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/zip")
    @Consumes(MediaType.APPLICATION_JSON)
    public Response downloadZip(JsonObject content,
             @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
             @Context HttpHeaders headers)
             throws Exception
    {
-      validateCommand(commandName);
+      exposedCommands.validateZipCommand(commandName);
       try (CommandController controller = getCommand(commandName, headers))
       {
          helper.populateControllerAllInputs(content, controller);
@@ -264,7 +313,9 @@ public class ObsidianResource
             Result result = controller.execute();
             if (result instanceof Failed)
             {
-               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(result.getMessage()).build();
+               JsonObjectBuilder builder = Json.createObjectBuilder();
+               helper.describeResult(builder,result);
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(builder).build();
             }
             else
             {
@@ -293,20 +344,105 @@ public class ObsidianResource
       }
    }
 
-   protected void validateCommand(String commandName)
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @Consumes(MediaType.APPLICATION_JSON)
+   public Response executeCommandJson(JsonObject content,
+            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
    {
-      if (commandMap.get(commandName) == null)
+      exposedCommands.validateCommand(commandName);
+      try (CommandController controller = getCommand(commandName, headers))
       {
-         String message = "No such command `" + commandName + "`. Supported commmands are '"
-                  + String.join("', '", commandMap.keySet()) + "'";
-         throw new WebApplicationException(message, Status.NOT_FOUND);
+         helper.populateControllerAllInputs(content, controller);
+         if (controller.isValid())
+         {
+            Result result = controller.execute();
+            if (result instanceof Failed)
+            {
+               JsonObjectBuilder builder = Json.createObjectBuilder();
+               helper.describeResult(builder,result);
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(builder).build();
+            }
+            else
+            {
+               Object entity = getEntity(result);
+               if (entity != null)
+               {
+                  return Response
+                           .ok(entity)
+                           .type(MediaType.APPLICATION_JSON)
+                           .build();
+               }
+               else
+               {
+                  return Response
+                           .ok(getMessage(result))
+                           .type(MediaType.TEXT_PLAIN)
+                           .build();
+               }
+            }
+         }
+         else
+         {
+            JsonObjectBuilder builder = createObjectBuilder();
+            helper.describeValidation(builder, controller);
+            return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
+         }
       }
+   }
+
+   /**
+    * Returns the entity from the result handling {@link CompositeResult} values as a List of entities
+    */
+   protected static Object getEntity(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         List<Object> answer = new ArrayList<>();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            Object entity = getEntity(child);
+            answer.add(entity);
+         }
+         return answer;
+      }
+      return result.getEntity().orElse(null);
+   }
+
+   /**
+    * Returns the result message handling composite results
+    */
+   protected static String getMessage(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         StringBuilder builder = new StringBuilder();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            String message = getMessage(child);
+            if (message != null && message.trim().length() > 0)
+            {
+               if (builder.length() > 0)
+               {
+                  builder.append("\n");
+               }
+               builder.append(message);
+            }
+         }
+         return builder.toString();
+
+      }
+      return result.getMessage();
    }
 
    private CommandController getCommand(String name, HttpHeaders headers) throws Exception
    {
       RestUIContext context = createUIContext(headers);
-      UICommand command = commandFactory.getNewCommandByName(context, commandMap.get(name));
+      UICommand command = commandFactory.getNewCommandByName(context, exposedCommands.getCommandLabel(name));
       CommandController controller = controllerFactory.createController(context,
                new RestUIRuntime(Collections.emptyList()), command);
       controller.initialize();

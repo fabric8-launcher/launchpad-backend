@@ -19,6 +19,7 @@ import static javax.json.Json.createObjectBuilder;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -87,6 +88,7 @@ public class ObsidianResource
    private static final String DEFAULT_COMMAND_NAME = "obsidian-new-quickstart";
 
    private static final Logger log = Logger.getLogger(ObsidianResource.class.getName());
+   public static final String CATAPULT_SERVICE_HOST = "CATAPULT_SERVICE_HOST";
 
    private final Map<String, String> commandMap = new TreeMap<>();
 
@@ -320,14 +322,8 @@ public class ObsidianResource
       String fileName = findArtifactId(content);
       byte[] zipContents = (byte[]) response.getEntity();
 
-      UriBuilder uri = UriBuilder.fromPath("/api/catapult/upload");
-      uri.host(System.getenv("CATAPULT_SERVICE_HOST"));
-      String port = System.getenv("CATAPULT_SERVICE_PORT");
-      uri.port(port != null ? Integer.parseInt(port) : 80);
-      uri.scheme("http");
-
       Client client = ClientBuilder.newBuilder().build();
-      WebTarget target = client.target(uri.build());
+      WebTarget target = client.target(createCatapultUri());
       client.property("Content-Type", MediaType.MULTIPART_FORM_DATA);
       Invocation.Builder builder = target.request();
 
@@ -338,6 +334,20 @@ public class ObsidianResource
 
       Response postResponse = builder.post(Entity.entity(genericEntity, MediaType.MULTIPART_FORM_DATA_TYPE));
       return Response.ok(postResponse.getLocation().toString()).build();
+   }
+
+   private URI createCatapultUri() {
+      UriBuilder uri = UriBuilder.fromPath("/api/catapult/upload");
+      String serviceHost = System.getenv(CATAPULT_SERVICE_HOST);
+      if (serviceHost == null)
+      {
+         throw new WebApplicationException("'" + CATAPULT_SERVICE_HOST + "' environment variable must be set!");
+      }
+      uri.host(serviceHost);
+      String port = System.getenv("CATAPULT_SERVICE_PORT");
+      uri.port(port != null ? Integer.parseInt(port) : 80);
+      uri.scheme("http");
+      return uri.build();
    }
 
    protected void validateCommand(String commandName)

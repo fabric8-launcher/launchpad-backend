@@ -1,6 +1,6 @@
 # Code Generator Backend
 
-[![Build Status](https://travis-ci.org/obsidian-toaster/generator-backend.svg?branch=master)](https://travis-ci.org/obsidian-toaster/generator-backend)
+[![Build Status](https://ci.centos.org/job/devtools-generator-backend-build-master/badge/icon)](https://ci.centos.org/job/devtools-generator-backend-build-master)
 
 This code generator project which is a Java backend system exposes several JBoss Forge commands
 using a REST endpoint. The backend runs within a WildFly Swarm container and is called from
@@ -25,13 +25,6 @@ $ java -jar target/generator-swarm.jar
 Then follow the [front-end ReadMe][1] to run the front-end.
 
 [1]:https://github.com/obsidian-toaster/generator-frontend/blob/master/README.md
-
-## HTTPS support
-
-The JAR also runs in SSL. The Keystore was created using:
-```
-keytool -genkeypair -alias appserver -storetype jks -keyalg RSA -keysize 2048 -keypass password -storepass password -dname "CN=generator-backend-obsidian.e8ca.engint.openshiftapps.com,OU=Engineering,O=Red Hat Inc,L=Raleigh NC,C=US" -validity 730 -v -keystore keystore.jks
-```
 
 ## Development mode
 

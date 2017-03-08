@@ -19,6 +19,7 @@ import static javax.json.Json.createObjectBuilder;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
@@ -118,7 +119,7 @@ public class ObsidianResource
       {
          log.info("Warming up internal cache");
          // Warm up
-         getCommand(DEFAULT_COMMAND_NAME, null);
+         getCommand(DEFAULT_COMMAND_NAME, ForgeInitializer.getRoot(), null);
          log.info("Caches warmed up");
          executorService.submit(() -> {
             java.nio.file.Path path = null;
@@ -167,7 +168,7 @@ public class ObsidianResource
    {
       validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
-      try (CommandController controller = getCommand(commandName, headers))
+      try (CommandController controller = getCommand(commandName, ForgeInitializer.getRoot(), headers))
       {
          helper.describeController(builder, controller);
       }
@@ -185,7 +186,7 @@ public class ObsidianResource
    {
       validateCommand(commandName);
       JsonObjectBuilder builder = createObjectBuilder();
-      try (CommandController controller = getCommand(commandName, headers))
+      try (CommandController controller = getCommand(commandName, ForgeInitializer.getRoot(), headers))
       {
          helper.populateControllerAllInputs(content, controller);
          helper.describeCurrentState(builder, controller);
@@ -207,7 +208,7 @@ public class ObsidianResource
       validateCommand(commandName);
       int stepIndex = content.getInt("stepIndex", 1);
       JsonObjectBuilder builder = createObjectBuilder();
-      try (CommandController controller = getCommand(commandName, headers))
+      try (CommandController controller = getCommand(commandName, ForgeInitializer.getRoot(), headers))
       {
          if (!(controller instanceof WizardCommandController))
          {
@@ -240,7 +241,7 @@ public class ObsidianResource
    {
       validateCommand(commandName);
       String stepIndex = form.asMap().remove("stepIndex").get(0);
-      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.parseInt(stepIndex));
       for (Map.Entry<String, List<String>> entry : form.asMap().entrySet())
       {
          jsonBuilder.addInput(entry.getKey(), entry.getValue());
@@ -265,7 +266,8 @@ public class ObsidianResource
             throws Exception
    {
       validateCommand(commandName);
-      try (CommandController controller = getCommand(commandName, headers))
+      java.nio.file.Path path = Files.createTempDirectory("projectDir");
+      try (CommandController controller = getCommand(commandName, path, headers))
       {
          helper.populateControllerAllInputs(content, controller);
          if (controller.isValid())
@@ -278,10 +280,10 @@ public class ObsidianResource
             else
             {
                UISelection<?> selection = controller.getContext().getSelection();
-               java.nio.file.Path path = Paths.get(selection.get().toString());
+               java.nio.file.Path projectPath = Paths.get(selection.get().toString());
                String artifactId = findArtifactId(content);
-               byte[] zipContents = org.obsidiantoaster.generator.util.Paths.zip(artifactId, path);
-               directoriesToDelete.offer(path);
+               byte[] zipContents = org.obsidiantoaster.generator.util.Paths.zip(artifactId, projectPath);
+               directoriesToDelete.offer(projectPath);
                return Response
                         .ok(zipContents)
                         .type("application/zip")
@@ -295,6 +297,10 @@ public class ObsidianResource
             helper.describeValidation(builder, controller);
             return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
          }
+      }
+      finally
+      {
+         directoriesToDelete.offer(path);
       }
    }
 
@@ -351,9 +357,18 @@ public class ObsidianResource
       }
    }
 
-   private CommandController getCommand(String name, HttpHeaders headers) throws Exception
+   private String findArtifactId(JsonObject content)
    {
-      RestUIContext context = createUIContext(headers);
+      String artifactId = content.getJsonArray("inputs").stream()
+               .filter(input -> "named".equals(((JsonObject) input).getString("name")))
+               .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
+               .findFirst().orElse("demo");
+      return artifactId;
+   }
+
+   private CommandController getCommand(String name, Path initialPath, HttpHeaders headers) throws Exception
+   {
+      RestUIContext context = createUIContext(initialPath, headers);
       UICommand command = commandFactory.getNewCommandByName(context, commandMap.get(name));
       CommandController controller = controllerFactory.createController(context,
                new RestUIRuntime(Collections.emptyList()), command);
@@ -361,10 +376,9 @@ public class ObsidianResource
       return controller;
    }
 
-   private RestUIContext createUIContext(HttpHeaders headers)
+   private RestUIContext createUIContext(Path initialPath, HttpHeaders headers)
    {
-      java.nio.file.Path rootPath = ForgeInitializer.getRoot();
-      Resource<?> selection = resourceFactory.create(rootPath.toFile());
+      Resource<?> selection = resourceFactory.create(initialPath.toFile());
       RestUIContext context = new RestUIContext(selection, Collections.emptyList());
       if (headers != null)
       {

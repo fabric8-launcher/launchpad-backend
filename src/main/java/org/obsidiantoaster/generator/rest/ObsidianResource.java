@@ -340,13 +340,6 @@ public class ObsidianResource
       return Response.ok(postResponse.getLocation().toString()).build();
    }
 
-   private String findArtifactId(JsonObject content) {
-      return content.getJsonArray("inputs").stream()
-            .filter(input -> "named".equals(((JsonObject) input).getString("name")))
-            .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
-            .findFirst().orElse("demo");
-   }
-
    protected void validateCommand(String commandName)
    {
       if (commandMap.get(commandName) == null)

@@ -51,7 +51,7 @@ objects:
           service: generator-backend
       spec:
         containers:
-        - image: registry.devshift.net/obsidian/obsidian-generator-backend:latest
+        - image: redhatdevelopers/generator-backend:latest
           imagePullPolicy: Always
           name: generator-backend
           ports:

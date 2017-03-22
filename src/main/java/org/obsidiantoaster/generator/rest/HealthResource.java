@@ -29,7 +29,7 @@ import org.obsidiantoaster.generator.util.JsonBuilder;
 @ApplicationScoped
 public class HealthResource
 {
-   private static final String CATAPULT_URL = "CATAPULT_URL";
+   private static final String CATAPULT_SERVICE_URL = "CATAPULT_URL";
    private static final Logger log = Logger.getLogger(HealthResource.class.getName());
 
    public static final String PATH_HEALTH = "/health";
@@ -37,6 +37,7 @@ public class HealthResource
    public static final String PATH_CATAPULT_READY = "/catapult/ready";
 
    private static final String STATUS = "status";
+   private static final String REASON = "reason";
    private static final String OK = "OK";
    private static final String ERROR = "ERROR";
 
@@ -66,16 +67,16 @@ public class HealthResource
           JsonObject object = Json.createReader(new StringReader(json)).readObject();
           return object;
        } catch (Exception ex) {
-          return Json.createObjectBuilder().add(STATUS, ERROR).build();
+          return Json.createObjectBuilder().add(STATUS, ERROR).add(REASON, ex.getMessage()).build();
        } finally {
           client.close();
        }
    }
 
    private URI createCatapultUri() {
-      String catapultUrlString = System.getenv(CATAPULT_URL);
+      String catapultUrlString = System.getProperty(CATAPULT_SERVICE_URL, System.getenv(CATAPULT_SERVICE_URL));
       if (catapultUrlString == null) {
-         throw new WebApplicationException("'" + CATAPULT_URL + "' environment variable must be set!");
+         throw new WebApplicationException("'" + CATAPULT_SERVICE_URL + "' environment variable must be set!");
       }
       return UriBuilder.fromUri(catapultUrlString).path("/api/health/ready").build();
    }

@@ -61,7 +61,6 @@ public class HealthResource
    public JsonObject catapultReady() {
        Client client = ClientBuilder.newBuilder().build();
        try {
-          log.warning(createCatapultUri().toString());
           WebTarget target = client.target(createCatapultUri());
           String json = target.request().get().readEntity(String.class);
           JsonObject object = Json.createReader(new StringReader(json)).readObject();

@@ -18,8 +18,9 @@
       <!-- Versions -->
       <arquillian.version>1.1.12.Final</arquillian.version>
       <obsidian.forge.version>${project.version}</obsidian.forge.version>
-      <fabric8.maven.plugin.version>3.1.92</fabric8.maven.plugin.version>
-      <wildfly.swarm.version>2017.3.3</wildfly.swarm.version>
+      <fabric8.maven.plugin.version>3.3.1</fabric8.maven.plugin.version>
+      <fabric8.generator.version>1.0.7</fabric8.generator.version>
+      <wildfly.swarm.version>2017.3.2</wildfly.swarm.version>
       <forge.version>3.6.0.Final</forge.version>
       <forge.service.version>1.0.0.CR2</forge.service.version>
       <furnace.version>2.25.2.Final</furnace.version>
@@ -33,6 +34,42 @@
       <nexusUrl>https://repository.jboss.org/nexus/</nexusUrl>
       <skipStaging>false</skipStaging>
    </properties>
+
+   <inceptionYear>2017</inceptionYear>
+
+   <organization>
+     <name>Red Hat</name>
+     <url>http://redhat.com</url>
+   </organization>
+
+   <licenses>
+     <license>
+       <name>Apache License, Version 2.0</name>
+       <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+       <distribution>repo</distribution>
+     </license>
+   </licenses>
+
+   <prerequisites>
+     <maven>3.2.1</maven>
+   </prerequisites>
+
+   <repositories>
+     <repository>
+       <id>repo.jenkins-ci.org</id>
+       <url>http://repo.jenkins-ci.org/public/</url>
+     </repository>
+     <repository>
+       <id>jboss-public-repo</id>
+       <url>https://repository.jboss.org/nexus/content/groups/public</url>
+       <releases>
+         <enabled>true</enabled>
+       </releases>
+       <snapshots>
+         <enabled>false</enabled>
+       </snapshots>
+     </repository>
+   </repositories>
 
    <dependencyManagement>
       <dependencies>
@@ -109,7 +146,10 @@
                      <addonRepository>${project.build.directory}/${project.build.finalName}/WEB-INF/addons</addonRepository>
                      <addonIds>
                         <addonId>org.jboss.forge.addon:core,${forge.version}</addonId>
+<!--
                         <addonId>org.obsidiantoaster.forge:obsidian-generator,${obsidian.forge.version}</addonId>
+-->
+                        <addonId>io.fabric8.forge:fabric8-generator,${fabric8.generator.version}</addonId>
                      </addonIds>
                   </configuration>
                </execution>
@@ -231,6 +271,7 @@
                   <groupId>io.fabric8</groupId>
                   <artifactId>fabric8-maven-plugin</artifactId>
                   <version>${fabric8.maven.plugin.version}</version>
+                  <!--
                   <configuration>
                      <generator>
                         <includes>
@@ -238,6 +279,7 @@
                         </includes>
                      </generator>
                   </configuration>
+                  -->
                   <executions>
                      <execution>
                         <goals>

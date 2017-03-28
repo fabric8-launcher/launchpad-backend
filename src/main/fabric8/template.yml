@@ -1,0 +1,4 @@
+kind: Template
+parameters:
+- name: OPENSHIFT_API_URL
+

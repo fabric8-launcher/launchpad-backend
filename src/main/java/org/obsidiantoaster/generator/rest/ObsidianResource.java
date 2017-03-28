@@ -15,28 +15,32 @@
  */
 package org.obsidiantoaster.generator.rest;
 
-import static javax.json.Json.createObjectBuilder;
-
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.jboss.forge.addon.resource.Resource;
+import org.jboss.forge.addon.resource.ResourceFactory;
+import org.jboss.forge.addon.ui.command.CommandFactory;
+import org.jboss.forge.addon.ui.command.UICommand;
+import org.jboss.forge.addon.ui.context.UIContext;
+import org.jboss.forge.addon.ui.context.UISelection;
+import org.jboss.forge.addon.ui.controller.CommandController;
+import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
+import org.jboss.forge.addon.ui.controller.WizardCommandController;
+import org.jboss.forge.addon.ui.result.CompositeResult;
+import org.jboss.forge.addon.ui.result.Failed;
+import org.jboss.forge.addon.ui.result.Result;
+import org.jboss.forge.furnace.versions.Versions;
+import org.jboss.forge.service.ui.RestUIContext;
+import org.jboss.forge.service.ui.RestUIRuntime;
+import org.jboss.forge.service.util.UICommandHelper;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
+import org.obsidiantoaster.generator.ForgeInitializer;
+import org.obsidiantoaster.generator.event.FurnaceStartup;
+import org.obsidiantoaster.generator.util.JsonBuilder;
 
 import javax.enterprise.concurrent.ManagedExecutorService;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
+import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
 import javax.json.JsonString;
@@ -50,6 +54,7 @@ import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.Invocation;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Form;
@@ -59,44 +64,36 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriBuilder;
+import javax.ws.rs.core.UriInfo;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.jboss.forge.addon.resource.Resource;
-import org.jboss.forge.addon.resource.ResourceFactory;
-import org.jboss.forge.addon.ui.command.CommandFactory;
-import org.jboss.forge.addon.ui.command.UICommand;
-import org.jboss.forge.addon.ui.context.UIContext;
-import org.jboss.forge.addon.ui.context.UISelection;
-import org.jboss.forge.addon.ui.controller.CommandController;
-import org.jboss.forge.addon.ui.controller.CommandControllerFactory;
-import org.jboss.forge.addon.ui.controller.WizardCommandController;
-import org.jboss.forge.addon.ui.result.Failed;
-import org.jboss.forge.addon.ui.result.Result;
-import org.jboss.forge.furnace.versions.Versions;
-import org.jboss.forge.service.ui.RestUIContext;
-import org.jboss.forge.service.ui.RestUIRuntime;
-import org.jboss.forge.service.util.UICommandHelper;
-import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataOutput;
-import org.obsidiantoaster.generator.ForgeInitializer;
-import org.obsidiantoaster.generator.event.FurnaceStartup;
-import org.obsidiantoaster.generator.util.JsonBuilder;
-import org.yaml.snakeyaml.Yaml;
+import static javax.json.Json.createObjectBuilder;
 
 @javax.ws.rs.Path("/forge")
 @ApplicationScoped
 public class ObsidianResource
 {
-   private static final String OBSIDIAN_YAML_PATH = ".obsidian/obsidian.yaml";
-   private static final String GITHUB_REPOSITORY_DESCRIPTION = "Obsidian-GHDescription";
-
    private static final String DEFAULT_COMMAND_NAME = "obsidian-new-quickstart";
 
    private static final Logger log = Logger.getLogger(ObsidianResource.class.getName());
-   private static final String CATAPULT_SERVICE_HOST = "CATAPULT_SERVICE_HOST";
-   private static final String CATAPULT_SERVICE_PORT = "CATAPULT_SERVICE_PORT";
-
-   private URI catapultServiceURI;
+   public static final String CATAPULT_SERVICE_HOST = "CATAPULT_SERVICE_HOST";
 
    private final Map<String, String> commandMap = new TreeMap<>();
+
    private final BlockingQueue<Path> directoriesToDelete = new LinkedBlockingQueue<>();
 
    @javax.annotation.Resource
@@ -106,6 +103,12 @@ public class ObsidianResource
    {
       commandMap.put("obsidian-new-quickstart", "Obsidian: New Quickstart");
       commandMap.put("obsidian-new-project", "Obsidian: New Project");
+
+      commandMap.put("fabric8-import-git", "fabric8: Import Git");
+      commandMap.put("fabric8-check-git-accounts", "fabric8: Check Git Accounts");
+
+      // TODO only enable if not using SaaS mode:
+      commandMap.put("fabric8-configure-git-account", "fabric8: Configure Git Account");
    }
 
    @Inject
@@ -124,8 +127,6 @@ public class ObsidianResource
    {
       try
       {
-         // Initialize Catapult URL
-         initializeCatapultServiceURI();
          log.info("Warming up internal cache");
          // Warm up
          getCommand(DEFAULT_COMMAND_NAME, ForgeInitializer.getRoot(), null);
@@ -240,6 +241,82 @@ public class ObsidianResource
       return builder.build();
    }
 
+   @GET
+   @javax.ws.rs.Path("/commands/{commandName}/query")
+   @Consumes(MediaType.MEDIA_TYPE_WILDCARD)
+   @Produces({MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN})
+   public Response executeQuery(@Context UriInfo uriInfo,
+            @PathParam("commandName") String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      validateCommand(commandName);
+      String stepIndex = null;
+      MultivaluedMap<String, String> parameters = uriInfo.getQueryParameters();
+      List<String> stepValues = parameters.get("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
+      {
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null) {
+         stepIndex = "0";
+      }
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      for (Map.Entry<String, List<String>> entry : parameters.entrySet())
+      {
+         String key = entry.getKey();
+         if (!"stepIndex".equals(key))
+         {
+            jsonBuilder.addInput(key, entry.getValue());
+         }
+      }
+
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
+      if (response.getEntity() instanceof JsonObject)
+      {
+         JsonObject responseEntity = (JsonObject) response.getEntity();
+         String error = ((JsonObject) responseEntity.getJsonArray("messages").get(0)).getString("description");
+         return Response.status(Status.PRECONDITION_FAILED).entity(error).build();
+      }
+      return response;
+   }
+
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+   public Response executeCommand(Form form,
+            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      validateCommand(commandName);
+      String stepIndex = null;
+      List<String> stepValues = form.asMap().remove("stepIndex");
+      if (stepValues != null && !stepValues.isEmpty())
+      {
+         stepIndex = stepValues.get(0);
+      }
+      if (stepIndex == null)
+      {
+         stepIndex = "0";
+      }
+      final JsonBuilder jsonBuilder = new JsonBuilder().createJson(Integer.valueOf(stepIndex));
+      for (Map.Entry<String, List<String>> entry : form.asMap().entrySet())
+      {
+         jsonBuilder.addInput(entry.getKey(), entry.getValue());
+      }
+
+      final Response response = executeCommandJson(jsonBuilder.build(), commandName, headers);
+      if (response.getEntity() instanceof JsonObject)
+      {
+         JsonObject responseEntity = (JsonObject) response.getEntity();
+         String error = ((JsonObject) responseEntity.getJsonArray("messages").get(0)).getString("description");
+         return Response.status(Status.PRECONDITION_FAILED).entity(error).build();
+      }
+      return response;
+   }
+      
+
    @POST
    @javax.ws.rs.Path("/commands/{commandName}/zip")
    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -296,7 +373,6 @@ public class ObsidianResource
                         .ok(zipContents)
                         .type("application/zip")
                         .header("Content-Disposition", "attachment; filename=\"" + artifactId + ".zip\"")
-                        .header(GITHUB_REPOSITORY_DESCRIPTION, guessRepositoryDescription(projectPath))
                         .build();
             }
          }
@@ -313,6 +389,104 @@ public class ObsidianResource
       }
    }
 
+
+   @POST
+   @javax.ws.rs.Path("/commands/{commandName}/execute")
+   @Consumes(MediaType.APPLICATION_JSON)
+   public Response executeCommandJson(JsonObject content,
+            @PathParam("commandName") @DefaultValue(DEFAULT_COMMAND_NAME) String commandName,
+            @Context HttpHeaders headers)
+            throws Exception
+   {
+      validateCommand(commandName);
+      java.nio.file.Path path = Files.createTempDirectory("projectDir");
+      try (CommandController controller = getCommand(commandName, path, headers))
+      {
+         helper.populateControllerAllInputs(content, controller);
+         if (controller.isValid())
+         {
+            Result result = controller.execute();
+            if (result instanceof Failed)
+            {
+               JsonObjectBuilder builder = Json.createObjectBuilder();
+               helper.describeResult(builder,result);
+               return Response.status(Status.INTERNAL_SERVER_ERROR).entity(builder).build();
+            }
+            else
+            {
+               Object entity = getEntity(result);
+               if (entity != null)
+               {
+                  return Response
+                           .ok(entity)
+                           .type(MediaType.APPLICATION_JSON)
+                           .build();
+               }
+               else
+               {
+                  return Response
+                           .ok(getMessage(result))
+                           .type(MediaType.TEXT_PLAIN)
+                           .build();
+               }
+            }
+         }
+         else
+         {
+            JsonObjectBuilder builder = createObjectBuilder();
+            helper.describeValidation(builder, controller);
+            return Response.status(Status.PRECONDITION_FAILED).entity(builder.build()).build();
+         }
+      }
+   }
+
+   /**
+    * Returns the entity from the result handling {@link CompositeResult} values as a List of entities
+    */
+   protected static Object getEntity(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         List<Object> answer = new ArrayList<>();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            Object entity = getEntity(child);
+            answer.add(entity);
+         }
+         return answer;
+      }
+      return result.getEntity().orElse(null);
+   }
+
+   /**
+    * Returns the result message handling composite results
+    */
+   protected static String getMessage(Result result)
+   {
+      if (result instanceof CompositeResult) {
+         CompositeResult compositeResult = (CompositeResult) result;
+         StringBuilder builder = new StringBuilder();
+         List<Result> results = compositeResult.getResults();
+         for (Result child : results)
+         {
+            String message = getMessage(child);
+            if (message != null && message.trim().length() > 0)
+            {
+               if (builder.length() > 0)
+               {
+                  builder.append("\n");
+               }
+               builder.append(message);
+            }
+         }
+         return builder.toString();
+
+      }
+      return result.getMessage();
+   }
+
+
    @POST
    @javax.ws.rs.Path("/commands/{commandName}/catapult")
    @Consumes(MediaType.APPLICATION_JSON)
@@ -326,42 +500,36 @@ public class ObsidianResource
       {
          return response;
       }
+
+      String fileName = findArtifactId(content);
       byte[] zipContents = (byte[]) response.getEntity();
-      String gitHubRepositoryDescription = response.getHeaderString(GITHUB_REPOSITORY_DESCRIPTION);
+
       Client client = ClientBuilder.newBuilder().build();
-      try
+      WebTarget target = client.target(createCatapultUri());
+      client.property("Content-Type", MediaType.MULTIPART_FORM_DATA);
+      Invocation.Builder builder = target.request();
+
+      MultipartFormDataOutput multipartFormDataOutput = new MultipartFormDataOutput();
+      multipartFormDataOutput.addFormData("file", new ByteArrayInputStream(zipContents),
+               MediaType.MULTIPART_FORM_DATA_TYPE, fileName + ".zip");
+
+      Response postResponse = builder.post(Entity.entity(multipartFormDataOutput, MediaType.MULTIPART_FORM_DATA_TYPE));
+      return Response.ok(postResponse.getLocation().toString()).build();
+   }
+
+   private URI createCatapultUri()
+   {
+      UriBuilder uri = UriBuilder.fromPath("/api/catapult/upload");
+      String serviceHost = System.getenv(CATAPULT_SERVICE_HOST);
+      if (serviceHost == null)
       {
-         WebTarget target = client.target(catapultServiceURI)
-                  .property(HttpHeaders.CONTENT_TYPE, MediaType.MULTIPART_FORM_DATA);
-
-         // Create request body
-         MultipartFormDataOutput multipartFormDataOutput = new MultipartFormDataOutput();
-         multipartFormDataOutput.addFormData("file", new ByteArrayInputStream(zipContents),
-                  MediaType.MULTIPART_FORM_DATA_TYPE, "project.zip");
-         multipartFormDataOutput.addFormData("gitHubRepositoryDescription", gitHubRepositoryDescription,
-                  MediaType.APPLICATION_FORM_URLENCODED_TYPE);
-
-         // Execute POST Request
-         Response post = target.request()
-                  .header(HttpHeaders.CONTENT_TYPE, MediaType.MULTIPART_FORM_DATA)
-                  // Propagate Authorization header
-                  .header(HttpHeaders.AUTHORIZATION, headers.getHeaderString(HttpHeaders.AUTHORIZATION))
-                  .post(Entity.entity(multipartFormDataOutput, MediaType.MULTIPART_FORM_DATA_TYPE));
-
-         URI location = post.getLocation();
-         if (location != null)
-         {
-            return Response.ok(location.toString()).build();
-         }
-         else
-         {
-            return Response.ok(post.readEntity(String.class), MediaType.APPLICATION_JSON).build();
-         }
+         throw new WebApplicationException("'" + CATAPULT_SERVICE_HOST + "' environment variable must be set!");
       }
-      finally
-      {
-         client.close();
-      }
+      uri.host(serviceHost);
+      String port = System.getenv("CATAPULT_SERVICE_PORT");
+      uri.port(port != null ? Integer.parseInt(port) : 80);
+      uri.scheme("http");
+      return uri.build();
    }
 
    protected void validateCommand(String commandName)
@@ -381,19 +549,6 @@ public class ObsidianResource
                .map(input -> ((JsonString) ((JsonObject) input).get("value")).getString())
                .findFirst().orElse("demo");
       return artifactId;
-   }
-
-   private void initializeCatapultServiceURI()
-   {
-      String host = System.getProperty(CATAPULT_SERVICE_HOST, System.getenv(CATAPULT_SERVICE_HOST));
-      if (host == null)
-      {
-         throw new WebApplicationException("'" + CATAPULT_SERVICE_HOST + "' environment variable must be set!");
-      }
-      UriBuilder uri = UriBuilder.fromPath("/api/catapult/upload").host(host).scheme("http");
-      String port = System.getProperty(CATAPULT_SERVICE_PORT, System.getenv(CATAPULT_SERVICE_PORT));
-      uri.port(port != null ? Integer.parseInt(port) : 80);
-      catapultServiceURI = uri.build();
    }
 
    private CommandController getCommand(String name, Path initialPath, HttpHeaders headers) throws Exception
@@ -417,32 +572,5 @@ public class ObsidianResource
          requestHeaders.keySet().forEach(key -> attributeMap.put(key, headers.getRequestHeader(key)));
       }
       return context;
-   }
-
-   /**
-    * Guess the Repository Description from the .obsidian/obsidian.yaml file.
-    * 
-    * Returns <code>null</code> if not found
-    */
-   @SuppressWarnings("unchecked")
-   private String guessRepositoryDescription(Path projectLocation)
-   {
-      String path = null;
-      Path obsidianDescriptor = projectLocation.resolve(OBSIDIAN_YAML_PATH);
-      if (Files.exists(obsidianDescriptor))
-      {
-         Yaml yaml = new Yaml();
-         try (BufferedReader reader = Files.newBufferedReader(obsidianDescriptor))
-         {
-            Map<String, String> data = yaml.loadAs(reader, Map.class);
-            path = data.get("description");
-         }
-         catch (Exception e)
-         {
-            // Ignore
-            log.log(Level.FINEST, "Error while reading obsidian descriptor", e);
-         }
-      }
-      return path;
    }
 }

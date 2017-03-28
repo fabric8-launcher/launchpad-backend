@@ -1,0 +1,7 @@
+spec:
+  template:
+    spec:
+      containers:
+        - env:
+          - name: OPENSHIFT_API_URL
+            value: ${OPENSHIFT_API_URL}

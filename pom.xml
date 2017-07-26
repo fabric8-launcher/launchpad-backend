@@ -226,19 +226,6 @@
                      <pluginExecutions>
                         <pluginExecution>
                            <pluginExecutionFilter>
-                              <groupId>org.jboss.forge.furnace</groupId>
-                              <artifactId>furnace-maven-plugin</artifactId>
-                              <versionRange>[2.24.4.Final,)</versionRange>
-                              <goals>
-                                 <goal>addon-install</goal>
-                              </goals>
-                           </pluginExecutionFilter>
-                           <action>
-                              <ignore />
-                           </action>
-                        </pluginExecution>
-                        <pluginExecution>
-                           <pluginExecutionFilter>
                               <groupId>io.fabric8</groupId>
                               <artifactId>fabric8-maven-plugin</artifactId>
                               <versionRange>[3.1.92,)</versionRange>

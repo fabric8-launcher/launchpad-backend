@@ -77,21 +77,4 @@ public class HealthResourceIT
       assertEquals("OK", entity.getString("status"));
       response.close();
    }
-
-   @Ignore("Until we can run the test against an actual Mission Control instance")
-   @Test
-   @RunAsClient
-   public void catapultReadinessCheck() throws Exception
-   {
-      URI catapultServiceURI = HealthResource.createMissionControlUri();
-      WebTarget catapultReadyTarget = client.target(catapultServiceURI);
-      final Response response = catapultReadyTarget.request().get();
-      assertNotNull(response);
-      assertEquals(200, response.getStatus());
-      String body = response.readEntity(String.class);
-      assertNotNull(body);
-      JsonObject entity = Json.createReader(new StringReader(body)).readObject();
-      assertEquals("OK", entity.getString("status"));
-      response.close();
-   }
 }

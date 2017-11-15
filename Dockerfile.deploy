@@ -4,7 +4,7 @@ MAINTAINER Vasek Pavlin <vasek@redhat.com>
 EXPOSE 8080
 EXPOSE 8443
 
-CMD ["java", "-jar", "launchpad-backend-swarm.jar"]
+CMD ["sh", "-c", "java $JAVA_OPTS -jar launchpad-backend-swarm.jar"]
 
 USER root
 RUN chgrp -R 0 /opt/jboss &&\

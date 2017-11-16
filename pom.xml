@@ -9,7 +9,7 @@
    <groupId>io.openshift.launchpad</groupId>
    <artifactId>launchpad-backend</artifactId>
    <name>Launchpad: Backend</name>
-   <version>12-SNAPSHOT</version>
+   <version>12</version>
    <packaging>war</packaging>
 
    <properties>
@@ -275,7 +275,7 @@
       <connection>scm:git:git://github.com/fabric8-launch/launchpad-backend.git</connection>
       <developerConnection>scm:git:git@github.com:fabric8-launch/launchpad-backend.git</developerConnection>
       <url>http://github.com/fabric8-launch/launchpad-backend</url>
-      <tag>HEAD</tag>
+      <tag>v12</tag>
    </scm>
    <distributionManagement>
       <snapshotRepository>

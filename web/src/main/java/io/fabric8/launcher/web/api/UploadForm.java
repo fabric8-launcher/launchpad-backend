@@ -112,7 +112,7 @@ public class UploadForm {
 
     public int getStartOfStep() {
         try {
-            return Integer.valueOf(step);
+            return Integer.parseInt(step);
         } catch (NumberFormatException e) {
             return 0;
         }

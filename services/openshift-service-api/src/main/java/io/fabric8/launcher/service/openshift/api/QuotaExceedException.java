@@ -5,7 +5,7 @@ package io.fabric8.launcher.service.openshift.api;
  */
 public class QuotaExceedException extends RuntimeException {
 
-    public QuotaExceedException(final String projectName) {
-        super(String.format("Could not create project: '%s' due to insufficient quota", projectName));
+    public QuotaExceedException(final String projectName, Throwable reason) {
+        super(String.format("Could not create project: '%s' due to insufficient quota", projectName), reason);
     }
 }

@@ -1,5 +1,8 @@
 # Launchpad Backend
 
+## This repository is no longer maintained! 
+## Moved to https://github.com/fabric8-launch/launcher-backend/
+
 [![Build Status](https://ci.centos.org/view/Devtools/job/devtools-launchpad-backend-generator-build-master/badge/icon)](https://ci.centos.org/view/Devtools/job/devtools-launchpad-backend-generator-build-master/)
 
 This code generator project which is a Java backend system exposes several JBoss Forge commands
